@@ -2,7 +2,7 @@ import streamlit as st
 import pdfplumber
 import re
 
-st.title('Laskurivien poiminta')
+st.title('SR-O / Laskurivien poiminta')
 
 uploaded_file = st.file_uploader("Valitse PDF-lasku", type="pdf")
 
