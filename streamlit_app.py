@@ -1,50 +1,40 @@
 import streamlit as st
 import pdfplumber
-import re
 
-st.title('Laskurivien poiminta ja yhteissummat (VAT 0%)')
+st.title("PDF-laskun analysointi: VAT 0 -rivit ja summat")
 
-uploaded_file = st.file_uploader("Valitse PDF-lasku", type="pdf")
+uploaded_file = st.file_uploader("Lataa PDF-lasku", type="pdf")
 
-keywords_input = st.text_input("Syötä haettavat sanat pilkulla eroteltuna (esim. Vakuutusmaksu, Vuokra):")
-keywords = [kw.strip().lower() for kw in keywords_input.split(",") if kw.strip()]
+keywords_input = st.text_input("Syötä hakusanat pilkulla eroteltuna (esim. Vakuutusmaksu, Vuokra):")
+keywords = [k.strip().lower() for k in keywords_input.split(",") if k.strip()]
 
 if uploaded_file and keywords:
     with pdfplumber.open(uploaded_file) as pdf:
-        lines = []
+        matches = []
+        total_sum = 0.0
+
         for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                lines.extend(text.splitlines())
+            tables = page.extract_tables()
+            for table in tables:
+                for row in table:
+                    if not row or len(row) < 6:
+                        continue
+                    product = (row[1] or "").lower()
+                    vat_pct = (row[4] or "").replace(" ", "")
+                    price_str = (row[5] or "").replace(" ", "").replace(",", ".")
+                    try:
+                        price = float(price_str)
+                    except:
+                        continue
 
-    st.subheader("Tulokset:")
+                    if any(kw in product for kw in keywords) and ("0.00" in vat_pct or "0%" in vat_pct.lower()):
+                        matches.append((product, price))
+                        total_sum += price
 
-    for keyword in keywords:
-        st.markdown(f"### 🔍 {keyword.upper()}")
-        total = 0.0
-        found_lines = []
-
-        for i, line in enumerate(lines):
-            if keyword in line.lower():
-                # Katsotaan seuraavat rivit mukaan (hinta löytyy usein seuraavalta riviltä)
-                context = " ".join(lines[i:i+3])
-
-                # Etsitään VAT 0% merkintä riviltä
-                if re.search(r"0\.00|0,00", context) and re.search(r'VAT\s*0|ALV\s*0|0%', context, re.IGNORECASE):
-                    # Poimitaan numerot summamuodossa
-                    sums = re.findall(r'\d{1,3}(?:[\s\u202f]?\d{3})*[.,]\d{2}', context)
-                    if sums:
-                        last_sum = sums[-1].replace(" ", "").replace(u'\u202f', '').replace(",", ".")
-                        try:
-                            value = float(last_sum)
-                            total += value
-                            found_lines.append((context.strip(), value))
-                        except:
-                            pass
-
-        if found_lines:
-            for ctx, val in found_lines:
-                st.write(f"🔹 {ctx} → **{val:.2f} €**")
-            st.success(f"**Yhteensä (VAT 0%) hakusanalla '{keyword}': {total:.2f} €**")
-        else:
-            st.warning(f"Ei löytynyt hakusanalla '{keyword}' ja VAT 0%.")
+    if matches:
+        st.markdown("### ✅ Löydetyt rivit:")
+        for product, price in matches:
+            st.write(f"- {product} → **{price:.2f} €**")
+        st.success(f"**Yhteensä: {total_sum:.2f} €**")
+    else:
+        st.warning("Ei löytynyt osumia.")
