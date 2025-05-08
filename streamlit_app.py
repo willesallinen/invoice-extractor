@@ -35,7 +35,7 @@ def find_keyword_totals(pdf, keywords):
 
     return matches, total_sum
 
-st.title("PDF-laskun analysointi sanojen ja summien perusteella")
+st.title("SR-O - Laskurivien poiminta v.1.0 ")
 
 uploaded_file = st.file_uploader("Lataa PDF-lasku", type="pdf")
 keywords_input = st.text_input("Syötä hakusanat (pilkulla eroteltuna, esim. Vuokra, Vakuutusmaksu):")
