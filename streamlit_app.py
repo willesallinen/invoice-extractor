@@ -1,40 +1,55 @@
 import streamlit as st
 import pdfplumber
 
-st.title("PDF-laskun analysointi: VAT 0 -rivit ja summat")
+def find_keyword_totals(pdf, keywords):
+    matches = []
+    total_sum = 0.0
+
+    for page in pdf.pages:
+        words = page.extract_words()
+        lines = {}
+
+        # Ryhmitellään sanat riveittäin y-koordinaatin mukaan (pyöristettynä)
+        for w in words:
+            y = round(w['top'])  # pyöristetään rivitasolle
+            lines.setdefault(y, []).append(w)
+
+        for y in sorted(lines.keys()):
+            line_words = lines[y]
+            line_text = " ".join(w['text'] for w in line_words).lower()
+
+            for keyword in keywords:
+                if keyword.lower() in line_text:
+                    # Etsitään riviltä VAT 0 ja viimeinen hinta
+                    for w in reversed(line_words):
+                        text = w['text'].replace(",", ".").replace(" ", "")
+                        if "0.00" in text or text.endswith("0%"):
+                            continue  # ohitetaan VAT-arvo
+                        try:
+                            val = float(text)
+                            matches.append((line_text.strip(), val))
+                            total_sum += val
+                            break
+                        except:
+                            continue
+
+    return matches, total_sum
+
+st.title("PDF-laskun analysointi sanojen ja summien perusteella")
 
 uploaded_file = st.file_uploader("Lataa PDF-lasku", type="pdf")
-
-keywords_input = st.text_input("Syötä hakusanat pilkulla eroteltuna (esim. Vakuutusmaksu, Vuokra):")
+keywords_input = st.text_input("Syötä hakusanat (pilkulla eroteltuna, esim. Vuokra, Vakuutusmaksu):")
 keywords = [k.strip().lower() for k in keywords_input.split(",") if k.strip()]
 
 if uploaded_file and keywords:
     with pdfplumber.open(uploaded_file) as pdf:
-        matches = []
-        total_sum = 0.0
+        results, total = find_keyword_totals(pdf, keywords)
 
-        for page in pdf.pages:
-            tables = page.extract_tables()
-            for table in tables:
-                for row in table:
-                    if not row or len(row) < 6:
-                        continue
-                    product = (row[1] or "").lower()
-                    vat_pct = (row[4] or "").replace(" ", "")
-                    price_str = (row[5] or "").replace(" ", "").replace(",", ".")
-                    try:
-                        price = float(price_str)
-                    except:
-                        continue
-
-                    if any(kw in product for kw in keywords) and ("0.00" in vat_pct or "0%" in vat_pct.lower()):
-                        matches.append((product, price))
-                        total_sum += price
-
-    if matches:
-        st.markdown("### ✅ Löydetyt rivit:")
-        for product, price in matches:
-            st.write(f"- {product} → **{price:.2f} €**")
-        st.success(f"**Yhteensä: {total_sum:.2f} €**")
+    if results:
+        st.subheader("Löydetyt rivit:")
+        for line, val in results:
+            st.write(f"🔹 {line} → **{val:.2f} €**")
+        st.success(f"**Yhteensä: {total:.2f} €**")
     else:
         st.warning("Ei löytynyt osumia.")
+
